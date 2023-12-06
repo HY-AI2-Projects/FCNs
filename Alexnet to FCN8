@@ -1,0 +1,69 @@
+#Alexnet to FCN-8
+
+import torch
+import torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as transforms
+from PIL import Image
+import matplotlib.pyplot as plt
+
+# Define FCN-8 model based on AlexNet
+class FCN8_AlexNet(nn.Module):
+    def __init__(self, num_classes):
+        super(FCN8_AlexNet, self).__init__()
+        # Load pre-trained AlexNet model
+        alexnet = models.alexnet(pretrained=True)
+        # Extract relevant feature layers
+        self.features4 = nn.Sequential(*alexnet.features[:8])
+        self.features5 = nn.Sequential(*alexnet.features[8:])
+        # Convert classifier layers to convolutional layers
+        self.classifier = nn.Sequential(
+            nn.Conv2d(256, 4096, kernel_size=(6, 6)),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(4096, num_classes, kernel_size=(1, 1))
+        )
+        # Define the decoder part with deconvolutions
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=2, stride=2),
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=8, stride=8)
+        )
+
+    def forward(self, x):
+        x4 = self.features4(x)
+        x5 = self.features5(x4)
+        x = self.classifier(x5)
+        x = self.decoder(x)
+        return x
+
+# Load an example image
+image_path = 'path/to/your/image.jpg'
+input_image = Image.open(image_path).convert('RGB')
+
+# Preprocess the input image
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+input_tensor = transform(input_image).unsqueeze(0)
+
+# Initialize FCN-8_AlexNet model
+num_classes = 21  # Assuming 21 classes for segmentation (Pascal VOC dataset)
+fcn_alexnet_model = FCN8_AlexNet(num_classes)
+
+# Perform segmentation
+with torch.no_grad():
+    output = fcn_alexnet_model(input_tensor)
+
+# Display the input image and segmented output
+plt.subplot(1, 2, 1)
+plt.imshow(input_image)
+plt.title('Input Image')
+
+plt.subplot(1, 2, 2)
+plt.imshow(output[0][0].numpy(), cmap='jet')  # Assuming single-channel output
+plt.title('Segmentation Output')
+
+plt.show()
