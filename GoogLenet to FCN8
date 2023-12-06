@@ -1,0 +1,65 @@
+# GoogLenet to FCN-8
+
+import torch
+import torch.nn as nn
+import torchvision.models as models
+import torchvision.transforms as transforms
+from PIL import Image
+import matplotlib.pyplot as plt
+
+# Define FCN-8 model based on GoogLeNet
+class FCN8_GoogLeNet(nn.Module):
+    def __init__(self, num_classes):
+        super(FCN8_GoogLeNet, self).__init__()
+        # Load pre-trained GoogLeNet model
+        googlenet = models.googlenet(pretrained=True)
+        # Extract relevant feature layers
+        self.features3 = googlenet.inception3
+        self.features4 = googlenet.inception4
+        # Convert classifier layers to convolutional layers
+        self.classifier = nn.Conv2d(1024, num_classes, kernel_size=(1, 1))
+        # Define the decoder part with deconvolutions
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=4, stride=2, padding=1),
+            nn.ConvTranspose2d(num_classes, num_classes, kernel_size=16, stride=8, padding=4)
+        )
+
+    def forward(self, x):
+        x3 = self.features3(x)
+        x4 = self.features4(x3)
+        x = self.classifier(x4)
+        x = self.decoder(x)
+        return x
+
+# Load an example image
+image_path = 'path/to/your/image.jpg'
+input_image = Image.open(image_path).convert('RGB')
+
+# Preprocess the input image
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+input_tensor = transform(input_image).unsqueeze(0)
+
+# Initialize FCN-8_GoogLeNet model
+num_classes = 21  # Assuming 21 classes for segmentation (Pascal VOC dataset)
+fcn_googlenet_model = FCN8_GoogLeNet(num_classes)
+
+# Perform segmentation
+with torch.no_grad():
+    output = fcn_googlenet_model(input_tensor)
+
+# Display the input image and segmented output
+plt.subplot(1, 2, 1)
+plt.imshow(input_image)
+plt.title('Input Image')
+
+plt.subplot(1, 2, 2)
+plt.imshow(output[0][0].numpy(), cmap='jet')  # Assuming single-channel output
+plt.title('Segmentation Output')
+
+plt.show()
